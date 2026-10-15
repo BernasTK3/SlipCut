@@ -1,0 +1,90 @@
+
+name: Build SlipCut
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build for Windows 10
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compile SlipCut
+        run: cmake --build build --config Release --parallel
+
+      - name: Package Windows application
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package
+          windeployqt --release build/Release/SlipCut.exe
+          Copy-Item build/Release/SlipCut.exe package/
+          $qtBin = Split-Path (Get-Command windeployqt).Source
+          $qtPlugins = Join-Path (Split-Path $qtBin) "plugins"
+          Copy-Item -Recurse $qtPlugins package/
+          Get-ChildItem build/Release -Filter "*.dll" |
+            Copy-Item -Destination package/
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: SlipCut-Windows-x64
+          path: package/
+          if-no-files-found: error
+
+  build-macos:
+    name: Build for macOS
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: mac
+          target: desktop
+          arch: clang_64
+          cache: true
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compile SlipCut
+        run: cmake --build build --config Release --parallel
+
+      - name: Package macOS application
+        run: |
+          macdeployqt build/SlipCut.app
+          mkdir -p package
+          ditto build/SlipCut.app package/SlipCut.app
+
+      - name: Upload macOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: SlipCut-macOS
+          path: package/SlipCut.app
+          if-no-files-found: error
